@@ -1,0 +1,133 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aegis-greeter
+  namespace: greeter
+  labels:
+    app.kubernetes.io/name: aegis-greeter
+    app.kubernetes.io/part-of: aegis-stateless
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aegis-greeter
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aegis-greeter
+        app.kubernetes.io/part-of: aegis-stateless
+    spec:
+      # Stateless greeter — no session affinity, free to round-robin.
+      # Spread pods across AZs so a single-AZ failure can't take all.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: aegis-greeter
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: greeter
+          # Overlay's kustomization.yaml `images:` transformer rewrites
+          # name + tag. Sibling repo (aegis-greeter) CI bumps the tag.
+          image: aegis-greeter:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            failureThreshold: 3
+          env:
+            # --- Downward API: pod / node identity --------------------
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            # --- OpenTelemetry contract (see aegis-greeter issue #1) ---
+            # App SDK pushes OTLP to the node-local Grafana Alloy
+            # DaemonSet; Pyroscope SDK pushes profiles to the same.
+            # OTLP endpoint is bare host:port — NO http:// scheme. The
+            # OTLP/gRPC exporter treats the whole value as the dial target;
+            # a scheme makes gRPC append :443 → "too many colons in
+            # address" and every export fails. INSECURE=true because
+            # Alloy's OTLP receiver is plaintext gRPC (no TLS).
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "$(NODE_IP):4317"
+            - name: OTEL_EXPORTER_OTLP_INSECURE
+              value: "true"
+            # Pyroscope ingest is HTTP — it DOES want the http:// scheme.
+            - name: PYROSCOPE_ENDPOINT
+              value: "http://$(NODE_IP):4040"
+            - name: OTEL_SERVICE_NAME
+              value: "aegis-greeter"
+            # otelhttp defaults to the legacy HTTP semantic conventions
+            # (http_server_duration_milliseconds, http_status_code, no
+            # http_route). The dashboards + alert rules use the current
+            # stable convention; this opt-in makes the SDK emit it —
+            # http.server.request.duration (seconds), http_route,
+            # http_response_status_code, http_server_active_requests.
+            - name: OTEL_SEMCONV_STABILITY_OPT_IN
+              value: "http"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "k8s.pod.name=$(POD_NAME),k8s.namespace.name=$(POD_NAMESPACE),k8s.node.name=$(NODE_NAME)"
+            # --- app config -------------------------------------------
+            # HELLO_TAG: greeting customization (overlay may override).
+            - name: HELLO_TAG
+              value: "aegis"
+          volumeMounts:
+            # readOnlyRootFilesystem: true → give the app a writable
+            # tmpfs for any scratch / temp needs.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

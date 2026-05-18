@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: aegis-greeter
+  namespace: greeter
+  labels:
+    app.kubernetes.io/name: aegis-greeter
+    app.kubernetes.io/part-of: aegis-stateless
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: aegis-greeter
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

@@ -1,0 +1,39 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aegis-greeter
+  namespace: greeter
+  labels:
+    app.kubernetes.io/name: aegis-greeter
+    app.kubernetes.io/part-of: aegis-stateless
+  annotations:
+    # AWS Load Balancer Controller — provisions an internet-facing ALB,
+    # routing to pods directly (target-type ip; no NodePort hop).
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    # ALB access logs: deferred. The S3 bucket is provisioned in the
+    # platform/ env, but enabling `access_logs.s3.enabled` requires
+    # `access_logs.s3.bucket=<name>` too — and that name embeds the AWS
+    # account ID, which cannot be committed (anonymization policy). Wire
+    # it via an operator-local overlay patch with the real bucket name.
+    # See docs/tradeoffs.md.
+    # external-dns (deferred — see regional-stack module README): when
+    # installed, this annotation drives a Route 53 A-alias record under
+    # the platform-owned hosted zone.
+    external-dns.alpha.kubernetes.io/hostname: greeter.aegis-stateless.test
+spec:
+  ingressClassName: alb
+  rules:
+    - host: greeter.aegis-stateless.test
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aegis-greeter
+                port:
+                  name: http
