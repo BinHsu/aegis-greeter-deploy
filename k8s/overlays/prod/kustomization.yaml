@@ -2,7 +2,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 # Prod overlay — what ArgoCD's Application CR points at
 # (k8s/overlays/prod). ArgoCD renders this kustomization and syncs the
-# result into the greeter namespace.
+# result into the aegis-greeter namespace.
 resources:
   - ../../base
 # Image — sibling repo (aegis-greeter) CI bumps `newTag` here on every

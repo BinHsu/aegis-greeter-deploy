@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: aegis-greeter
-  namespace: greeter
+  namespace: aegis-greeter
   labels:
     app.kubernetes.io/name: aegis-greeter
     app.kubernetes.io/part-of: aegis-stateless

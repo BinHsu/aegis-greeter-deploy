@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: greeter
+  name: aegis-greeter
   labels:
     app.kubernetes.io/part-of: aegis-stateless
     # PodSecurity Standards — PSP is deprecated; PSS is the K8s-native

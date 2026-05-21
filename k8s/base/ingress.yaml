@@ -2,7 +2,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: aegis-greeter
-  namespace: greeter
+  namespace: aegis-greeter
   labels:
     app.kubernetes.io/name: aegis-greeter
     app.kubernetes.io/part-of: aegis-stateless
