@@ -1,0 +1,36 @@
+# Self-registration marker + declared ArgoCD intent (aegis-platform ADR-07).
+#
+# This file is the repo's explicit OPT-IN to be reconciled: the platform's
+# ApplicationSet (SCM-provider generator) only enrols a repo that carries BOTH
+# the `aegis-workload` GitHub topic AND this file. Tagging alone is not enough.
+#
+# ⚠️ This Application is NOT applied directly — do not `kubectl apply` it. The
+# platform ApplicationSet RENDERS the effective Application from this repo,
+# injecting what a deploy repo cannot know (the cluster region as the
+# `aegis.binhsu.org/region` annotation, and the ECR registry — so this repo
+# never commits an account ID). The fields below are the canonical declaration
+# of THIS workload's intent; the platform owns the base + policy that wraps it.
+#
+# ⚠️ implemented, E2E PENDING platform bootstrap — discovery + reconcile has not
+# run against a live cluster (issue #6 gate: "ApplicationSet discovers BOTH
+# aegis-workload repos + reconciles them").
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aegis-greeter
+  namespace: argocd
+spec:
+  project: aegis-workloads
+  source:
+    repoURL: https://github.com/BinHsu/aegis-greeter-deploy
+    targetRevision: HEAD
+    path: k8s/overlays/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: aegis-greeter # derived from the repo name by the platform
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

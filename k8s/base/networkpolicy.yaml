@@ -1,0 +1,47 @@
+# Allow-rules layered on the platform's default-deny baseline.
+#
+# The platform now generates a deny-all NetworkPolicy into every workload
+# namespace (aegis-platform ADR-07 enforcement #4 — the "ldz #54 contract"
+# that core's manifests already assumed but which was never built). Without
+# the allows below, greeter would go dark: the ALB could not reach its pods
+# and the pods could not resolve DNS or ship telemetry. greeter declares only
+# the minimum edges it actually needs.
+#
+# ⚠️ implemented, E2E PENDING platform bootstrap — "default-deny actually
+# denies, allow-listed traffic flows" is a negative+positive test in issue #6.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aegis-greeter-allow
+  namespace: aegis-greeter
+  labels:
+    app.kubernetes.io/name: aegis-greeter
+  annotations:
+    aegis.binhsu.org/policy-rationale: allows-on-top-of-platform-default-deny
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: aegis-greeter
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Public HTTP service behind an internet-facing ALB (target-type ip → the
+    # ALB connects to pod IPs). Allow the app port from anywhere.
+    - ports:
+        - port: 8080
+          protocol: TCP
+  egress:
+    # DNS resolution (kube-dns).
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # Telemetry to the node-local Grafana Alloy DaemonSet (OTLP gRPC :4317,
+    # Pyroscope :4040 on the host IP — see the deployment's NODE_IP env).
+    - ports:
+        - port: 4317
+          protocol: TCP
+        - port: 4040
+          protocol: TCP

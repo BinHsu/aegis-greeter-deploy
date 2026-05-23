@@ -9,13 +9,15 @@ resources:
 # build (commit-back via the INFRA_REPO_PAT fine-grained token), and
 # ArgoCD then detects the git change and syncs.
 #
-# `newName` resolves to the ECR repo URL provisioned by the platform/
-# TF env: <account-id>.dkr.ecr.<region>.amazonaws.com/aegis-greeter.
-# The placeholder below is overwritten at first CI image push; the
-# resulting committed account ID is an accepted, documented leak —
-# see docs/tradeoffs.md ("AWS account ID in the committed image manifest").
+# `newName` (the ECR registry URL — it embeds the AWS account ID) is GONE.
+# The platform ApplicationSet now injects it via kustomize.images at sync
+# time (aegis-platform ADR-07 / account-ID hide), so the account ID never
+# lands in this public repo. Only the bare image name + the CI-managed tag
+# live here.
+#
+# ⚠️ implemented, E2E PENDING platform bootstrap — confirm the injected
+# newName resolves the image at first sync.
 images:
   - name: aegis-greeter
-    newName: 677078406165.dkr.ecr.eu-central-1.amazonaws.com/aegis-greeter # CI rewrites to the full ECR URL
     newTag: "54d3a06" # CI rewrites to the immutable image tag
 # Prod replica floor matches the base (2). HPA scales 2→10 on CPU.
