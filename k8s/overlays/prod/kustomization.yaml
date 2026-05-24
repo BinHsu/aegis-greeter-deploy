@@ -21,3 +21,37 @@ images:
   - name: aegis-greeter
     newTag: "54d3a06" # CI rewrites to the immutable image tag
 # Prod replica floor matches the base (2). HPA scales 2→10 on CPU.
+
+# Region injection (ADR-07 D3) — workload-owned, not platform-pushed.
+#
+# The platform ApplicationSet injects ONE generic annotation,
+# `aegis.binhsu.org/region: <cluster region>` (kustomize.commonAnnotations).
+# greeter consumes it HERE via kustomize `replacements` — the platform never
+# learns greeter's internal deployment/container/ingress names. The default
+# below (`local`) keeps a standalone `kustomize build` working; ArgoCD
+# overrides the same annotation key with the real region at sync, and the
+# annotations transformer runs before the replacement transformer, so the
+# replacement reads the injected value.
+#
+# ⚠️ implemented, E2E PENDING platform bootstrap — confirm at first sync that
+# the injected region reaches HELLO_TAG + the latency annotations.
+commonAnnotations:
+  aegis.binhsu.org/region: "local"
+
+replacements:
+  - source:
+      kind: Deployment
+      name: aegis-greeter
+      fieldPath: metadata.annotations.[aegis.binhsu.org/region]
+    targets:
+      - select:
+          kind: Deployment
+          name: aegis-greeter
+        fieldPaths:
+          - spec.template.spec.containers.[name=greeter].env.[name=HELLO_TAG].value
+      - select:
+          kind: Ingress
+          name: aegis-greeter
+        fieldPaths:
+          - metadata.annotations.[external-dns.alpha.kubernetes.io/set-identifier]
+          - metadata.annotations.[external-dns.alpha.kubernetes.io/aws-region]
