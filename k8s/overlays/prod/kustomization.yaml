@@ -9,13 +9,49 @@ resources:
 # build (commit-back via the INFRA_REPO_PAT fine-grained token), and
 # ArgoCD then detects the git change and syncs.
 #
-# `newName` resolves to the ECR repo URL provisioned by the platform/
-# TF env: <account-id>.dkr.ecr.<region>.amazonaws.com/aegis-greeter.
-# The placeholder below is overwritten at first CI image push; the
-# resulting committed account ID is an accepted, documented leak —
-# see docs/tradeoffs.md ("AWS account ID in the committed image manifest").
+# `newName` (the ECR registry URL — it embeds the AWS account ID) is GONE.
+# The platform ApplicationSet now injects it via kustomize.images at sync
+# time (aegis-platform ADR-07 / account-ID hide), so the account ID never
+# lands in this public repo. Only the bare image name + the CI-managed tag
+# live here.
+#
+# ⚠️ implemented, E2E PENDING platform bootstrap — confirm the injected
+# newName resolves the image at first sync.
 images:
   - name: aegis-greeter
-    newName: 677078406165.dkr.ecr.eu-central-1.amazonaws.com/aegis-greeter # CI rewrites to the full ECR URL
     newTag: "54d3a06" # CI rewrites to the immutable image tag
 # Prod replica floor matches the base (2). HPA scales 2→10 on CPU.
+
+# Region injection (ADR-07 D3) — workload-owned, not platform-pushed.
+#
+# The platform ApplicationSet injects ONE generic annotation,
+# `aegis.binhsu.org/region: <cluster region>` (kustomize.commonAnnotations).
+# greeter consumes it HERE via kustomize `replacements` — the platform never
+# learns greeter's internal deployment/container/ingress names. The default
+# below (`local`) keeps a standalone `kustomize build` working; ArgoCD
+# overrides the same annotation key with the real region at sync, and the
+# annotations transformer runs before the replacement transformer, so the
+# replacement reads the injected value.
+#
+# ⚠️ implemented, E2E PENDING platform bootstrap — confirm at first sync that
+# the injected region reaches HELLO_TAG + the latency annotations.
+commonAnnotations:
+  aegis.binhsu.org/region: "local"
+
+replacements:
+  - source:
+      kind: Deployment
+      name: aegis-greeter
+      fieldPath: metadata.annotations.[aegis.binhsu.org/region]
+    targets:
+      - select:
+          kind: Deployment
+          name: aegis-greeter
+        fieldPaths:
+          - spec.template.spec.containers.[name=greeter].env.[name=HELLO_TAG].value
+      - select:
+          kind: Ingress
+          name: aegis-greeter
+        fieldPaths:
+          - metadata.annotations.[external-dns.alpha.kubernetes.io/set-identifier]
+          - metadata.annotations.[external-dns.alpha.kubernetes.io/aws-region]

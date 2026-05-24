@@ -7,6 +7,7 @@ resources:
   - service.yaml
   - ingress.yaml
   - hpa.yaml
+  - networkpolicy.yaml
 
 # `labels` (not the legacy `commonLabels`) with includeSelectors:false —
 # adds the label to resource metadata only, NOT to Deployment/Service

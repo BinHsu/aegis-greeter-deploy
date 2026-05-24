@@ -24,6 +24,18 @@ metadata:
     # installed, this annotation drives a Route 53 A-alias record under
     # the platform-owned hosted zone.
     external-dns.alpha.kubernetes.io/hostname: greeter.aegis-stateless.test
+    # Cross-region latency routing — each region's ALB is one latency-routed
+    # member of the shared hostname. set-identifier + aws-region carry the
+    # serving region; the values default to "local" here and are rewritten to
+    # the real region by the prod overlay's kustomize `replacements`, sourced
+    # from the platform-injected `aegis.binhsu.org/region` annotation (ADR-07
+    # D3 — region injection is workload-owned via kustomize, not platform-side
+    # per-workload config). evaluate-target-health drops the record when the
+    # ALB is gone (region failover).
+    # ⚠️ implemented, E2E PENDING platform bootstrap.
+    external-dns.alpha.kubernetes.io/set-identifier: "local"
+    external-dns.alpha.kubernetes.io/aws-region: "local"
+    external-dns.alpha.kubernetes.io/aws-evaluate-target-health: "true"
 spec:
   ingressClassName: alb
   rules:
