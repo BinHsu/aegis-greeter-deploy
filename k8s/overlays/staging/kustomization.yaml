@@ -1,37 +1,48 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-# Prod overlay — what ArgoCD's Application CR points at
-# (k8s/overlays/prod). ArgoCD renders this kustomization and syncs the
-# result into the aegis-greeter namespace.
+# Staging overlay — the first stop in the promotion path (ADR-10). The
+# aegis-greeter build CI bumps THIS overlay's image digest on every build;
+# the platform ApplicationSet renders it into the aegis-staging cluster.
+# Once verified here, a promotion PR copies the SAME digest into
+# overlays/prod. ArgoCD reconciles each overlay independently.
 resources:
   - ../../base
-# Image — pinned BY DIGEST, not by tag (ADR-10 "build once, promote by
-# digest"). The image is built ONCE in the aegis-greeter build CI and the
-# immutable `sha256:` digest is promoted across environments unchanged — a
-# git-sha tag is mutable-by-convention and lets a rebuild diverge between
-# envs, so the artifact is identified by its content hash instead.
-#
-# Promotion path: build CI bumps the DIGEST in `overlays/staging` first; a
-# promotion PR then copies the SAME digest into this prod overlay. ArgoCD
-# detects the git change and syncs. See ../staging and the repo README.
+# Image — pinned BY DIGEST (ADR-10 "build once, promote by digest"). The
+# build CI writes the real digest here, in place, with:
+#   kustomize edit set image aegis-greeter@sha256:<digest>
+# run inside this directory — which rewrites the `digest` field below.
 #
 # `newName` (the ECR registry URL — it embeds the AWS account ID) is GONE.
 # The platform ApplicationSet injects it via kustomize.images at sync time
-# (aegis-platform ADR-07 / account-ID hide; one shared registry in the
-# dedicated aegis-deployment account per ADR-10), so the account ID never
-# lands in this public repo. Only the bare image name + its digest live here.
+# (one shared registry in the dedicated aegis-deployment account per ADR-10),
+# so the account ID never lands in this public repo. Only the bare image
+# name + its digest live here.
 #
 # ⚠️ implemented, E2E PENDING platform bootstrap — confirm the injected
 # newName resolves the image at first sync.
 images:
   - name: aegis-greeter
-    # Placeholder digest. The promotion PR copies the verified staging
-    # digest here verbatim:
-    #   kustomize edit set image aegis-greeter@sha256:<digest>
+    # Placeholder digest. Build CI overwrites it (see above).
     digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
-# Prod replica floor matches the base (2). HPA scales 2→10 on CPU.
-# Staging overrides this to 1 (see ../staging) — same artifact, different
-# config, which is the whole point of keeping env-diff in the overlay.
+# Env-diff lives in the overlay, NOT in the artifact (ADR-10). Staging runs
+# a leaner footprint than prod: one replica instead of the base floor of two.
+# The deliberate difference proves the image is identical across envs and
+# only config changes between them.
+patches:
+  - target:
+      kind: Deployment
+      name: aegis-greeter
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: aegis-greeter
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 1
 
 # Region injection (ADR-07 D3) — workload-owned, not platform-pushed.
 #
