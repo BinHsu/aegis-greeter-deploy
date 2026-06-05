@@ -19,7 +19,8 @@ resources:
 # newName resolves the image at first sync.
 images:
   - name: aegis-greeter
-    newTag: "54d3a06" # CI rewrites to the immutable image tag
+    newTag: "e5d032c" # CI rewrites to the immutable image tag
+    newName: 677078406165.dkr.ecr.eu-central-1.amazonaws.com/aegis-greeter
 # Prod replica floor matches the base (2). HPA scales 2→10 on CPU.
 
 # Region injection (ADR-07 D3) — workload-owned, not platform-pushed.
@@ -37,7 +38,6 @@ images:
 # the injected region reaches HELLO_TAG + the latency annotations.
 commonAnnotations:
   aegis.binhsu.org/region: "local"
-
 replacements:
   - source:
       kind: Deployment
