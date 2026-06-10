@@ -11,8 +11,9 @@ name: Validate
 #   2. Injection simulation — replays what the platform ApplicationSet
 #      does at sync time (inject `aegis.binhsu.org/region` and
 #      `aegis.binhsu.org/ecr-repository` via kustomize commonAnnotations)
-#      and asserts the rendered image is `<repo URL>@sha256:<digest>`,
-#      i.e. the registry lands AND the digest survives.
+#      and asserts the rendered image is `<repo URL>@<THE SAME digest the
+#      standalone render pinned>`, i.e. the registry lands AND the exact
+#      digest survives — not merely "some digest".
 #
 # `kubectl kustomize` is used as the renderer — kubectl ships on the
 # ubuntu runner image with kustomize embedded (no extra tool install).
@@ -31,6 +32,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Render overlays + assert digest pin (wipe-bug guard)
         run: |
@@ -38,12 +41,17 @@ jobs:
           for overlay in staging prod; do
             echo "=== k8s/overlays/${overlay} (standalone) ==="
             kubectl kustomize "k8s/overlays/${overlay}" > "rendered-${overlay}.yaml"
-            # Exactly the Deployment image lines; the build fails the job
-            # on a render error, the grep fails it on a missing digest.
-            image_line="$(grep -E '^\s+image: ' "rendered-${overlay}.yaml")"
-            echo "${image_line}"
-            echo "${image_line}" | grep -Eq 'image: aegis-greeter@sha256:[0-9a-f]{64}$' \
-              || { echo "::error::${overlay}: rendered image is not digest-pinned (kustomize.images wipe regression?)"; exit 1; }
+            image_lines="$(grep -E '^\s+image: ' "rendered-${overlay}.yaml")"
+            echo "${image_lines}"
+            # EVERY image line must be digest-pinned — a single stray
+            # unpinned image (e.g. a future sidecar) must fail, so we
+            # assert no line violates instead of "at least one matches".
+            bad="$(echo "${image_lines}" | grep -Ev 'image: aegis-greeter@sha256:[0-9a-f]{64}$' || true)"
+            [ -z "${bad}" ] \
+              || { echo "::error::${overlay}: non-digest-pinned image line(s) (kustomize.images wipe regression?):"; echo "${bad}"; exit 1; }
+            # Record the pinned digest; the injection step asserts the
+            # SAME digest survives, not merely any digest.
+            echo "${image_lines}" | head -1 | sed -E 's/.*@(sha256:[0-9a-f]{64})$/\1/' > "digest-${overlay}.txt"
           done
 
       - name: Simulate platform annotation injection + assert digest survives
@@ -56,6 +64,7 @@ jobs:
           ECR_REPO="123456789012.dkr.ecr.${REGION}.amazonaws.com/aegis-greeter"
           for overlay in staging prod; do
             echo "=== k8s/overlays/${overlay} (injected) ==="
+            digest="$(cat "digest-${overlay}.txt")"
             rm -rf /tmp/inject-sim
             cp -r k8s /tmp/inject-sim
             sed -i \
@@ -63,12 +72,16 @@ jobs:
               -e "s|aegis.binhsu.org/ecr-repository: \"aegis-greeter\"|aegis.binhsu.org/ecr-repository: \"${ECR_REPO}\"|" \
               "/tmp/inject-sim/overlays/${overlay}/kustomization.yaml"
             kubectl kustomize "/tmp/inject-sim/overlays/${overlay}" > "rendered-${overlay}-injected.yaml"
-            image_line="$(grep -E '^\s+image: ' "rendered-${overlay}-injected.yaml")"
-            echo "${image_line}"
-            # Registry URL must land in front of the SAME pinned digest.
-            echo "${image_line}" | grep -Eq "image: ${ECR_REPO}@sha256:[0-9a-f]{64}\$" \
-              || { echo "::error::${overlay}: injected registry did not preserve the digest"; exit 1; }
-            # The region chain must still render (HELLO_TAG replacement).
-            grep -Eq "value: ${REGION}\$" "rendered-${overlay}-injected.yaml" \
+            image_lines="$(grep -E '^\s+image: ' "rendered-${overlay}-injected.yaml")"
+            echo "${image_lines}"
+            # Registry URL must land in front of THE SAME digest the
+            # standalone render pinned, on every image line.
+            bad="$(echo "${image_lines}" | grep -Fv "image: ${ECR_REPO}@${digest}" || true)"
+            [ -z "${bad}" ] \
+              || { echo "::error::${overlay}: injected render diverged from ${ECR_REPO}@${digest}:"; echo "${bad}"; exit 1; }
+            # The region chain must still render — scoped to the HELLO_TAG
+            # env var, not any stray `value:` field in the manifest.
+            grep -A1 'name: HELLO_TAG' "rendered-${overlay}-injected.yaml" \
+              | grep -Eq "value: ${REGION}\$" \
               || { echo "::error::${overlay}: injected region did not reach HELLO_TAG"; exit 1; }
           done

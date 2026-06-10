@@ -13,7 +13,7 @@ environments by its content digest (`sha256:...`), never rebuilt per env. Env
 differences (replicas, limits, host, role-trust) live in the overlays, not in
 the artifact.
 
-```
+```text
 aegis-greeter build CI
   │  build + push image ONCE, capture sha256 digest
   ▼
@@ -55,7 +55,7 @@ digest, single shared registry in a dedicated Deployment account").
 
 ## Layout
 
-```
+```text
 k8s/
   base/                 namespace, deployment, service, ingress, hpa, networkpolicy
   overlays/
