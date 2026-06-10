@@ -67,10 +67,16 @@ jobs:
             digest="$(cat "digest-${overlay}.txt")"
             rm -rf /tmp/inject-sim
             cp -r k8s /tmp/inject-sim
-            sed -i \
-              -e "s|aegis.binhsu.org/region: \"local\"|aegis.binhsu.org/region: \"${REGION}\"|" \
-              -e "s|aegis.binhsu.org/ecr-repository: \"aegis-greeter\"|aegis.binhsu.org/ecr-repository: \"${ECR_REPO}\"|" \
+            # Key-anchored, quote-agnostic: `kustomize edit set image` (the
+            # digest bump) reflows the YAML and strips value quotes, so the
+            # sim must not depend on quoting. Anchored at line start (incl.
+            # indent) so comment lines mentioning the keys are untouched.
+            sed -i -E \
+              -e "s|^([[:space:]]*aegis.binhsu.org/region:).*|\1 \"${REGION}\"|" \
+              -e "s|^([[:space:]]*aegis.binhsu.org/ecr-repository:).*|\1 \"${ECR_REPO}\"|" \
               "/tmp/inject-sim/overlays/${overlay}/kustomization.yaml"
+            grep -qF "${ECR_REPO}" "/tmp/inject-sim/overlays/${overlay}/kustomization.yaml" \
+              || { echo "::error::${overlay}: injection sim failed to rewrite the ecr-repository annotation (sed matched nothing)"; exit 1; }
             kubectl kustomize "/tmp/inject-sim/overlays/${overlay}" > "rendered-${overlay}-injected.yaml"
             image_lines="$(grep -E '^\s+image: ' "rendered-${overlay}-injected.yaml")"
             echo "${image_lines}"
