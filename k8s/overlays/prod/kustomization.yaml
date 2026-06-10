@@ -15,14 +15,14 @@ resources:
 # promotion PR then copies the SAME digest into this prod overlay. ArgoCD
 # detects the git change and syncs. See ../staging and the repo README.
 #
-# `newName` (the ECR registry URL — it embeds the AWS account ID) is GONE.
-# The platform ApplicationSet injects it via kustomize.images at sync time
-# (aegis-platform ADR-07 / account-ID hide; one shared registry in the
-# dedicated aegis-deployment account per ADR-10), so the account ID never
-# lands in this public repo. Only the bare image name + its digest live here.
-#
-# ⚠️ implemented, E2E PENDING platform bootstrap — confirm the injected
-# newName resolves the image at first sync.
+# This `images:` entry owns EXCLUSIVELY the digest. The registry URL (it
+# embeds the AWS account ID) is never written here: the platform's former
+# `spec.source.kustomize.images` newName-only injection was empirically
+# proven (kustomize v5.8.1) to DELETE this digest field and render
+# `:latest`. The registry now arrives as the
+# `aegis.binhsu.org/ecr-repository` annotation instead (see the
+# registry-injection block below), spliced into the image's repo part by
+# a `replacements` rule that preserves the digest.
 images:
   - name: aegis-greeter
     # Placeholder digest. The promotion PR copies the verified staging
@@ -46,8 +46,19 @@ images:
 #
 # ⚠️ implemented, E2E PENDING platform bootstrap — confirm at first sync that
 # the injected region reaches HELLO_TAG + the latency annotations.
+#
+# Registry injection (ADR-10) — SAME channel as the region annotation.
+# The platform ApplicationSet injects
+# `aegis.binhsu.org/ecr-repository: <acct>.dkr.ecr.<region>.amazonaws.com/aegis-greeter`
+# (full repo URL, NO tag/digest) via kustomize.commonAnnotations. The
+# replacement below rewrites ONLY the part of the container image before
+# the `@` (options: delimiter "@", index 0), so the digest pinned in
+# `images:` above survives injection — unlike the old kustomize.images
+# newName override, which wiped it. The default (`aegis-greeter`) keeps a
+# standalone `kustomize build` rendering `aegis-greeter@sha256:<digest>`.
 commonAnnotations:
   aegis.binhsu.org/region: "local"
+  aegis.binhsu.org/ecr-repository: "aegis-greeter"
 
 replacements:
   - source:
@@ -66,3 +77,16 @@ replacements:
         fieldPaths:
           - metadata.annotations.[external-dns.alpha.kubernetes.io/set-identifier]
           - metadata.annotations.[external-dns.alpha.kubernetes.io/aws-region]
+  - source:
+      kind: Deployment
+      name: aegis-greeter
+      fieldPath: metadata.annotations.[aegis.binhsu.org/ecr-repository]
+    targets:
+      - select:
+          kind: Deployment
+          name: aegis-greeter
+        fieldPaths:
+          - spec.template.spec.containers.[name=greeter].image
+        options:
+          delimiter: "@"
+          index: 0

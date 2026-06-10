@@ -1,15 +1,18 @@
 # Self-registration marker + declared ArgoCD intent (aegis-platform ADR-07).
 #
-# This file is the repo's explicit OPT-IN to be reconciled: the platform's
-# ApplicationSet (SCM-provider generator) only enrols a repo that carries BOTH
-# the `aegis-workload` GitHub topic AND this file. Tagging alone is not enough.
+# This file is the repo's explicit OPT-IN to be reconciled: enrolment is
+# driven by the platform's ApplicationSet (see aegis-platform-aws,
+# regional-stack), with the `aegis-workload` topic/marker as the enrolment
+# convention — a repo is enrolled only when it carries BOTH that marker AND
+# this file. The marker alone is not enough.
 #
 # ⚠️ This Application is NOT applied directly — do not `kubectl apply` it. The
 # platform ApplicationSet RENDERS the effective Application from this repo,
 # injecting what a deploy repo cannot know (the cluster region as the
-# `aegis.binhsu.org/region` annotation, and the ECR registry — so this repo
-# never commits an account ID). The fields below are the canonical declaration
-# of THIS workload's intent; the platform owns the base + policy that wraps it.
+# `aegis.binhsu.org/region` annotation, and the ECR repository URL as the
+# `aegis.binhsu.org/ecr-repository` annotation — so this repo never commits
+# an account ID). The fields below are the canonical declaration of THIS
+# workload's intent; the platform owns the base + policy that wraps it.
 #
 # ⚠️ implemented, E2E PENDING platform bootstrap — discovery + reconcile has not
 # run against a live cluster (issue #6 gate: "ApplicationSet discovers BOTH

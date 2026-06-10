@@ -31,14 +31,23 @@ promotion PR       ← copies the SAME digest into overlays/prod (no rebuild)
   bare image name and a `digest:` field. A git-sha tag is mutable by
   convention and lets a rebuild diverge between envs; the digest is the image's
   content hash, so staging and prod provably run the identical artifact.
-- **Registry injected at sync, not committed.** The `newName` (ECR registry
-  URL) is absent on purpose — it embeds an AWS account ID. The platform
-  ApplicationSet injects it via `kustomize.images` from its gitignored
-  `registries.auto.tfvars.json`. One shared registry lives in a dedicated
-  `aegis-deployment` account; this repo carries only name + digest.
+- **Registry injected at sync, not committed.** The registry URL is absent on
+  purpose — it embeds an AWS account ID. The platform ApplicationSet injects
+  it as the `aegis.binhsu.org/ecr-repository` annotation (same channel as the
+  `aegis.binhsu.org/region` annotation); a kustomize `replacements` rule in
+  each overlay splices it into the image's repo part while preserving the
+  digest. The earlier `kustomize.images` newName injection is gone — it
+  provably wiped the overlay's digest field and rendered `:latest`. One shared
+  registry lives in a dedicated `aegis-deployment` account; this repo carries
+  only name + digest.
 - **Promotion is a digest copy.** Promoting staging → prod copies the verified
   `sha256:` digest into `overlays/prod`; ArgoCD reconciles the git change. No
   artifact is rebuilt at promotion time.
+  > `kustomize edit set image` rewrites the whole kustomization into
+  > kustomize-canonical formatting (list indent, key order). The only
+  > *semantic* change is the digest — the registry/region replacements still
+  > render identically — so review the bump diff for the digest line, not the
+  > reflow.
 
 See the platform repo for the full rationale: `aegis-platform-aws` README
 "Release model" section and ADR-10 ("Release model: build once, promote by
