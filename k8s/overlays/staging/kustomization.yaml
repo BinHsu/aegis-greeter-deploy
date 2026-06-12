@@ -22,7 +22,7 @@ resources:
 # a `replacements` rule that preserves the digest.
     # Placeholder digest. Build CI overwrites it (see above).
 images:
-- digest: sha256:292a131e0a7236af4f213bb8663d42330c93951971f012e5de77c3b17f7e9af2
+- digest: sha256:46c38386ed5d3cd7fa4d5599ca73ecc758ef916ec79b3cd022201d022907f2a0
   name: aegis-greeter
 # Env-diff lives in the overlay, NOT in the artifact (ADR-10). Staging runs
 # a leaner footprint than prod: one replica instead of the base floor of two.
