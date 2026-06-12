@@ -28,7 +28,7 @@ images:
     # Placeholder digest. The promotion PR copies the verified staging
     # digest here verbatim:
     #   kustomize edit set image aegis-greeter@sha256:<digest>
-    digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    digest: "sha256:0e6f3e6b113bf12f9c4536caa9ccf8aa59351c066408eb1a750a7a97b73d2d28"
 # Prod replica floor matches the base (2). HPA scales 2→10 on CPU.
 # Staging overrides this to 1 (see ../staging) — same artifact, different
 # config, which is the whole point of keeping env-diff in the overlay.
