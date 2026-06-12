@@ -3,6 +3,20 @@ kind: Deployment
 metadata:
   name: aegis-greeter
   namespace: aegis-greeter
+  annotations:
+    # Standalone-build defaults for the platform-injected annotations.
+    # These live on the BASE resource (not overlay commonAnnotations) because
+    # ArgoCD's injection mechanism runs `kustomize edit add annotation <k:v>`
+    # WITHOUT --force, which refuses keys that are already present in the
+    # kustomization file (caught live 2026-06-12: "annotation already in
+    # kustomization file. Use --force to override."). By placing the defaults
+    # here as literal resource annotations instead, the overlay kustomization
+    # files declare NO value for these keys — so ArgoCD's edit-add-annotation
+    # succeeds, and the commonAnnotations transformer then overrides these
+    # literals at sync time with the real values injected by the platform
+    # ApplicationSet.
+    aegis.binhsu.org/ecr-repository: aegis-greeter
+    aegis.binhsu.org/region: local
   labels:
     app.kubernetes.io/name: aegis-greeter
     app.kubernetes.io/part-of: aegis-stateless

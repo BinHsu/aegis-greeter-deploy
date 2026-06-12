@@ -10,13 +10,21 @@ name: Validate
 #      digest field and rendered `:latest` (proven on kustomize v5.8.1).
 #   2. Injection simulation — replays what the platform ApplicationSet
 #      does at sync time (inject `aegis.binhsu.org/region` and
-#      `aegis.binhsu.org/ecr-repository` via kustomize commonAnnotations)
-#      and asserts the rendered image is `<repo URL>@<THE SAME digest the
-#      standalone render pinned>`, i.e. the registry lands AND the exact
-#      digest survives — not merely "some digest".
+#      `aegis.binhsu.org/ecr-repository` via `kustomize edit add annotation`
+#      WITHOUT --force — exactly as ArgoCD does), then builds and asserts
+#      the rendered image is `<repo URL>@<THE SAME digest the standalone
+#      render pinned>`, and that the injected region reached HELLO_TAG.
 #
-# `kubectl kustomize` is used as the renderer — kubectl ships on the
-# ubuntu runner image with kustomize embedded (no extra tool install).
+#      Using the real kustomize edit mechanism (not sed) means CI catches
+#      exactly the conflict class that broke ArgoCD on 2026-06-12: if the
+#      overlay kustomization file declares a key that ArgoCD tries to inject,
+#      this step fails with "annotation already in kustomization file. Use
+#      --force to override." — the same error ArgoCD surfaces.
+#
+# kustomize v5.8.1 linux/amd64 is downloaded once, sha256-verified, and
+# reused across both overlay loops. `kubectl kustomize` (shipped on the
+# ubuntu runner) is used for the standalone render; the standalone-installed
+# kustomize binary is used for the injection simulation (edit + build).
 
 on:
   pull_request:
@@ -34,6 +42,22 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+
+      - name: Install kustomize v5.8.1 (pinned sha256)
+        run: |
+          set -euo pipefail
+          # Download the official release tarball, verify its sha256, then
+          # extract the binary. The checksum was recorded from the release's
+          # checksums.txt at the time this workflow was authored; it must
+          # match exactly — any divergence aborts the job before any code runs.
+          KUSTOMIZE_VERSION="v5.8.1"
+          KUSTOMIZE_TARBALL="kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz"
+          KUSTOMIZE_URL="https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/${KUSTOMIZE_TARBALL}"
+          KUSTOMIZE_SHA256="029a7f0f4e1932c52a0476cf02a0fd855c0bb85694b82c338fc648dcb53a819d"
+          curl -fsSL "${KUSTOMIZE_URL}" -o "/tmp/${KUSTOMIZE_TARBALL}"
+          echo "${KUSTOMIZE_SHA256}  /tmp/${KUSTOMIZE_TARBALL}" | sha256sum --check
+          tar -xzf "/tmp/${KUSTOMIZE_TARBALL}" -C /usr/local/bin kustomize
+          kustomize version
 
       - name: Render overlays + assert digest pin (wipe-bug guard)
         run: |
@@ -57,27 +81,30 @@ jobs:
       - name: Simulate platform annotation injection + assert digest survives
         run: |
           set -euo pipefail
-          # Replay the ArgoCD-side injection: the platform ApplicationSet
-          # sets these two commonAnnotations keys at sync time, overriding
-          # the overlay defaults ("local" / "aegis-greeter").
+          # Replay the ArgoCD-side injection using the REAL kustomize mechanism:
+          # `kustomize edit add annotation <k:v>` WITHOUT --force — exactly as
+          # ArgoCD's ApplicationSet runs it. If an overlay kustomization file
+          # still declares these keys (i.e. the fix regressed), this step will
+          # fail with "annotation already in kustomization file. Use --force to
+          # override." — the same error ArgoCD surfaces — catching the conflict
+          # class before it reaches the cluster.
           REGION="eu-central-1"
-          ECR_REPO="123456789012.dkr.ecr.${REGION}.amazonaws.com/aegis-greeter"
+          ECR_REPO="162975888022.dkr.ecr.${REGION}.amazonaws.com/aegis-greeter"
           for overlay in staging prod; do
             echo "=== k8s/overlays/${overlay} (injected) ==="
             digest="$(cat "digest-${overlay}.txt")"
             rm -rf /tmp/inject-sim
             cp -r k8s /tmp/inject-sim
-            # Key-anchored, quote-agnostic: `kustomize edit set image` (the
-            # digest bump) reflows the YAML and strips value quotes, so the
-            # sim must not depend on quoting. Anchored at line start (incl.
-            # indent) so comment lines mentioning the keys are untouched.
-            sed -i -E \
-              -e "s|^([[:space:]]*aegis.binhsu.org/region:).*|\1 \"${REGION}\"|" \
-              -e "s|^([[:space:]]*aegis.binhsu.org/ecr-repository:).*|\1 \"${ECR_REPO}\"|" \
-              "/tmp/inject-sim/overlays/${overlay}/kustomization.yaml"
-            grep -qF "${ECR_REPO}" "/tmp/inject-sim/overlays/${overlay}/kustomization.yaml" \
-              || { echo "::error::${overlay}: injection sim failed to rewrite the ecr-repository annotation (sed matched nothing)"; exit 1; }
-            kubectl kustomize "/tmp/inject-sim/overlays/${overlay}" > "rendered-${overlay}-injected.yaml"
+            # Run kustomize edit add annotation (no --force) in the overlay dir,
+            # exactly as ArgoCD does. This fails if the keys are already present
+            # in the kustomization file — which is the regression we guard here.
+            (
+              cd "/tmp/inject-sim/overlays/${overlay}"
+              kustomize edit add annotation \
+                "aegis.binhsu.org/ecr-repository:${ECR_REPO}" \
+                "aegis.binhsu.org/region:${REGION}"
+            )
+            kustomize build "/tmp/inject-sim/overlays/${overlay}" > "rendered-${overlay}-injected.yaml"
             image_lines="$(grep -E '^\s+image: ' "rendered-${overlay}-injected.yaml")"
             echo "${image_lines}"
             # Registry URL must land in front of THE SAME digest the

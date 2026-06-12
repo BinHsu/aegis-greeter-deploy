@@ -38,11 +38,21 @@ images:
 # The platform ApplicationSet injects ONE generic annotation,
 # `aegis.binhsu.org/region: <cluster region>` (kustomize.commonAnnotations).
 # greeter consumes it HERE via kustomize `replacements` — the platform never
-# learns greeter's internal deployment/container/ingress names. The default
-# below (`local`) keeps a standalone `kustomize build` working; ArgoCD
-# overrides the same annotation key with the real region at sync, and the
-# annotations transformer runs before the replacement transformer, so the
-# replacement reads the injected value.
+# learns greeter's internal deployment/container/ingress names.
+#
+# Standalone-build defaults for `aegis.binhsu.org/region` and
+# `aegis.binhsu.org/ecr-repository` are declared as LITERAL annotations on
+# the base Deployment (k8s/base/deployment.yaml metadata.annotations), NOT
+# here in commonAnnotations. This is intentional: ArgoCD's injection runs
+# `kustomize edit add annotation <k:v>` WITHOUT --force, and that command
+# refuses keys already present in the kustomization file (caught live
+# 2026-06-12: "annotation already in kustomization file. Use --force to
+# override."). Keeping this kustomization annotation-free means ArgoCD's
+# edit-add-annotation succeeds; the commonAnnotations transformer then
+# overrides the base literals with the real platform-injected values at sync
+# time. The replacements below source from the Deployment's
+# metadata.annotations — which are the platform-injected values after a real
+# sync, or the base literals for a standalone `kustomize build`.
 #
 # ⚠️ implemented, E2E PENDING platform bootstrap — confirm at first sync that
 # the injected region reaches HELLO_TAG + the latency annotations.
@@ -53,12 +63,7 @@ images:
 # (full repo URL, NO tag/digest) via kustomize.commonAnnotations. The
 # replacement below rewrites ONLY the part of the container image before
 # the `@` (options: delimiter "@", index 0), so the digest pinned in
-# `images:` above survives injection — unlike the old kustomize.images
-# newName override, which wiped it. The default (`aegis-greeter`) keeps a
-# standalone `kustomize build` rendering `aegis-greeter@sha256:<digest>`.
-commonAnnotations:
-  aegis.binhsu.org/region: "local"
-  aegis.binhsu.org/ecr-repository: "aegis-greeter"
+# `images:` above survives injection.
 
 replacements:
   - source:
