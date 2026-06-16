@@ -1,0 +1,72 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Talos / on-prem overlay (WS0). Proves the platform injection contract is
+# genuinely target-swappable, not EKS-only: the SAME base and the SAME
+# replacements mechanism that render an ECR image on EKS render a LOCAL
+# registry image here — only the platform-injected values differ, zero base
+# change.
+#
+# The platform injects the target-specific registry + region as two generic
+# annotations via the ArgoCD Application's `kustomize.commonAnnotations`
+# (an ApplicationSet does this per-cluster in prod):
+#   aegis.binhsu.org/ecr-repository: <host>:5000/aegis-greeter   (local registry, not ECR)
+#   aegis.binhsu.org/region:         local-talos
+# This overlay declares NO value for those keys (see staging overlay for the
+# annotation-free rationale); the replacements below consume whatever the
+# platform injected.
+resources:
+  - ../../base
+  - httproute.yaml
+
+# Image — pinned BY DIGEST (ADR-10 "build once, promote by digest"). On-prem
+# has no ECR, so the image was built locally and pushed to the in-cluster
+# registry; this is its digest. The replacement below splices the
+# platform-injected local-registry URL into the repo part, preserving this
+# digest.
+images:
+  - name: aegis-greeter
+    digest: sha256:74f2095f1de33f0fa185fe4b2c35afab4e3f3987f3a33485ac0f6cc5199a0948
+
+patches:
+  # The base ships an AWS-ALB Ingress. The Talos target serves L7 through the
+  # Gateway API (Envoy Gateway), added as httproute.yaml above — so drop the
+  # Ingress. Swapping the ingress mechanism per target is exactly the
+  # per-target overlay shape WS0 sets out to prove.
+  - target:
+      kind: Ingress
+      name: aegis-greeter
+    patch: |
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: aegis-greeter
+        namespace: aegis-greeter
+
+# Identical replacement mechanism to the staging/prod overlays — the proof
+# that the contract is unchanged across targets. The Ingress-targeting region
+# replacement is dropped (no Ingress on this target); HELLO_TAG and the image
+# repo splice are kept.
+replacements:
+  - source:
+      fieldPath: metadata.annotations.[aegis.binhsu.org/region]
+      kind: Deployment
+      name: aegis-greeter
+    targets:
+      - fieldPaths:
+          - spec.template.spec.containers.[name=greeter].env.[name=HELLO_TAG].value
+        select:
+          kind: Deployment
+          name: aegis-greeter
+  - source:
+      fieldPath: metadata.annotations.[aegis.binhsu.org/ecr-repository]
+      kind: Deployment
+      name: aegis-greeter
+    targets:
+      - fieldPaths:
+          - spec.template.spec.containers.[name=greeter].image
+        options:
+          delimiter: '@'
+        select:
+          kind: Deployment
+          name: aegis-greeter

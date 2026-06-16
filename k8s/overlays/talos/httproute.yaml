@@ -1,0 +1,26 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: aegis-greeter
+  namespace: aegis-greeter
+  labels:
+    app.kubernetes.io/name: aegis-greeter
+    app.kubernetes.io/part-of: aegis-stateless
+spec:
+  # Gateway API replaces the base's AWS-ALB Ingress on the Talos target.
+  # The Gateway lives in the cluster's gateway namespace; the platform
+  # provisions it once per target (Envoy Gateway here, an ALB on EKS).
+  parentRefs:
+    - name: aegis-gw
+      namespace: envoy-gateway-system
+      sectionName: http
+  hostnames:
+    - greeter.local
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: aegis-greeter
+          port: 80
