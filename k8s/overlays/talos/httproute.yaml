@@ -5,7 +5,7 @@ metadata:
   namespace: aegis-greeter
   labels:
     app.kubernetes.io/name: aegis-greeter
-    app.kubernetes.io/part-of: aegis-stateless
+    app.kubernetes.io/part-of: aegis-platform
 spec:
   # Gateway API replaces the base's AWS-ALB Ingress on the Talos target.
   # The Gateway lives in the cluster's gateway namespace; the platform

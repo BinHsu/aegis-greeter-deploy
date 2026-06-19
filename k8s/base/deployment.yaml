@@ -19,7 +19,7 @@ metadata:
     aegis.binhsu.org/region: local
   labels:
     app.kubernetes.io/name: aegis-greeter
-    app.kubernetes.io/part-of: aegis-stateless
+    app.kubernetes.io/part-of: aegis-platform
 spec:
   replicas: 2
   selector:
@@ -34,7 +34,7 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: aegis-greeter
-        app.kubernetes.io/part-of: aegis-stateless
+        app.kubernetes.io/part-of: aegis-platform
     spec:
       # Stateless greeter — no session affinity, free to round-robin.
       # Spread pods across AZs so a single-AZ failure can't take all.
