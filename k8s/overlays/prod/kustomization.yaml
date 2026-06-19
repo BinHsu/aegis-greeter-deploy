@@ -65,6 +65,26 @@ images:
 # the `@` (options: delimiter "@", index 0), so the digest pinned in
 # `images:` above survives injection.
 
+patches:
+  # Prod hostname (mirrors aegis-core-deploy overlays/prod pattern). The base
+  # ingress ships the staging host as default; prod serves on its per-env
+  # subdomain under aws.binhsu.org. Also patches the external-dns hostname
+  # annotation, which external-dns uses in addition to spec.rules[].host.
+  - patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: greeter.prod.aws.binhsu.org
+    target:
+      kind: Ingress
+      name: aegis-greeter
+  - patch: |-
+      - op: replace
+        path: /metadata/annotations/external-dns.alpha.kubernetes.io~1hostname
+        value: greeter.prod.aws.binhsu.org
+    target:
+      kind: Ingress
+      name: aegis-greeter
+
 replacements:
   - source:
       kind: Deployment

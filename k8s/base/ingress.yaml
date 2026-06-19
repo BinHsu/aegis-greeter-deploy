@@ -5,7 +5,7 @@ metadata:
   namespace: aegis-greeter
   labels:
     app.kubernetes.io/name: aegis-greeter
-    app.kubernetes.io/part-of: aegis-stateless
+    app.kubernetes.io/part-of: aegis-platform
   annotations:
     # AWS Load Balancer Controller — provisions an internet-facing ALB,
     # routing to pods directly (target-type ip; no NodePort hop).
@@ -22,8 +22,9 @@ metadata:
     # See docs/tradeoffs.md.
     # external-dns (deferred — see regional-stack module README): when
     # installed, this annotation drives a Route 53 A-alias record under
-    # the platform-owned hosted zone.
-    external-dns.alpha.kubernetes.io/hostname: greeter.aegis-stateless.test
+    # the platform-owned hosted zone. Default is the staging subdomain;
+    # the prod overlay patches this to greeter.prod.aws.binhsu.org.
+    external-dns.alpha.kubernetes.io/hostname: greeter.staging.aws.binhsu.org
     # Cross-region latency routing — each region's ALB is one latency-routed
     # member of the shared hostname. set-identifier + aws-region carry the
     # serving region; the values default to "local" here and are rewritten to
@@ -39,7 +40,10 @@ metadata:
 spec:
   ingressClassName: alb
   rules:
-    - host: greeter.aegis-stateless.test
+    # DNS host. Base default is the staging subdomain; the prod overlay patches
+    # it to greeter.prod.aws.binhsu.org (mirrors the aegis-api.*.aws.binhsu.org
+    # pattern in aegis-core-deploy/k8s/components/aws-binding/gateway-ingress.yaml).
+    - host: greeter.staging.aws.binhsu.org
       http:
         paths:
           - path: /
