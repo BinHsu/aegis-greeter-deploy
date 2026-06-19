@@ -3,7 +3,7 @@ kind: Namespace
 metadata:
   name: aegis-greeter
   labels:
-    app.kubernetes.io/part-of: aegis-stateless
+    app.kubernetes.io/part-of: aegis-platform
     # PodSecurity Standards — PSP is deprecated; PSS is the K8s-native
     # replacement, built into kube-apiserver since 1.25. No admission
     # controller install needed. `restricted` is the most-strict tier.
