@@ -36,9 +36,8 @@ resources:
 # (or a manual `kustomize edit set image` here with a real GHCR digest)
 # before relying on this overlay.
 images:
-- digest: sha256:0e6f3e6b113bf12f9c4536caa9ccf8aa59351c066408eb1a750a7a97b73d2d28
+- digest: sha256:3168f677eb17c9662a5b0163833080a810afd32357786eee92731b71262684d1
   name: aegis-greeter
-  newName: ghcr.io/binhsu/aegis-greeter
 # Env-diff lives in the overlay, NOT in the artifact (ADR-10). Staging runs
 # a leaner footprint than prod: one replica instead of the base floor of two.
 # The deliberate difference proves the image is identical across envs and
