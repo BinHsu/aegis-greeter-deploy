@@ -15,18 +15,31 @@ resources:
 # promotion PR then copies the SAME digest into this prod overlay. ArgoCD
 # detects the git change and syncs. See ../staging and the repo README.
 #
-# This `images:` entry owns EXCLUSIVELY the digest. The registry URL (it
-# embeds the AWS account ID) is never written here: the platform's former
-# `spec.source.kustomize.images` newName-only injection was empirically
-# proven (kustomize v5.8.1) to DELETE this digest field and render
-# `:latest`. The registry now arrives as the
-# `aegis.binhsu.org/ecr-repository` annotation instead (see the
-# registry-injection block below), spliced into the image's repo part by
-# a `replacements` rule that preserves the digest.
+# Registry — GHCR, static ref (2026-07-21 migration off AWS ECR; see
+# aegis-platform-aws ADR-24, mirroring ADR-23's aegis-core precedent).
+# `ghcr.io/binhsu/aegis-greeter` is a public ref with no account id and no
+# region, so — unlike the old ECR path — the platform has nothing to inject:
+# `newName` is committed directly, here, instead of being spliced in at sync
+# time. This ALSO ends ADR-12's registry-injection channel for greeter (the
+# `aegis.binhsu.org/ecr-repository` annotation/replacement is removed below).
+#
+# ⚠️ FOLLOW-UP (ordering — HIGH PRIORITY, this is prod): the digest below was
+# promoted from the OLD ECR-hosted image and does NOT exist in GHCR — no
+# bytes were ever pushed there under it. Unlike staging, nothing auto-heals
+# this: prod promotion is a manual, gated PR (see staging's overlay + the
+# repo README). DO NOT rely on this overlay resolving until a fresh
+# promotion PR copies a REAL GHCR digest from staging (produced by the next
+# push to aegis-greeter's main, which now publishes to GHCR) into this
+# `digest:` field. Until that promotion lands, a real sync here would
+# ImagePullBackOff — acceptable only because prod has never been synced by a
+# live cluster yet (E2E PENDING platform bootstrap, per
+# argocd/application.yaml). Treat "run a fresh promotion" as a blocking
+# pre-condition before this cluster is ever stood up for real.
 images:
   - name: aegis-greeter
-    # Placeholder digest. The promotion PR copies the verified staging
-    # digest here verbatim:
+    newName: ghcr.io/binhsu/aegis-greeter
+    # Placeholder digest — see the FOLLOW-UP note above. The promotion PR
+    # copies the verified staging digest here verbatim:
     #   kustomize edit set image aegis-greeter@sha256:<digest>
     digest: "sha256:0e6f3e6b113bf12f9c4536caa9ccf8aa59351c066408eb1a750a7a97b73d2d28"
 # Prod replica floor matches the base (2). HPA scales 2→10 on CPU.
@@ -40,30 +53,25 @@ images:
 # greeter consumes it HERE via kustomize `replacements` — the platform never
 # learns greeter's internal deployment/container/ingress names.
 #
-# Standalone-build defaults for `aegis.binhsu.org/region` and
-# `aegis.binhsu.org/ecr-repository` are declared as LITERAL annotations on
-# the base Deployment (k8s/base/deployment.yaml metadata.annotations), NOT
-# here in commonAnnotations. This is intentional: ArgoCD's injection runs
-# `kustomize edit add annotation <k:v>` WITHOUT --force, and that command
-# refuses keys already present in the kustomization file (caught live
-# 2026-06-12: "annotation already in kustomization file. Use --force to
-# override."). Keeping this kustomization annotation-free means ArgoCD's
-# edit-add-annotation succeeds; the commonAnnotations transformer then
-# overrides the base literals with the real platform-injected values at sync
-# time. The replacements below source from the Deployment's
-# metadata.annotations — which are the platform-injected values after a real
-# sync, or the base literals for a standalone `kustomize build`.
+# Standalone-build default for `aegis.binhsu.org/region` is declared as a
+# LITERAL annotation on the base Deployment (k8s/base/deployment.yaml
+# metadata.annotations), NOT here in commonAnnotations. This is intentional:
+# ArgoCD's injection runs `kustomize edit add annotation <k:v>` WITHOUT
+# --force, and that command refuses keys already present in the
+# kustomization file (caught live 2026-06-12: "annotation already in
+# kustomization file. Use --force to override."). Keeping this kustomization
+# annotation-free means ArgoCD's edit-add-annotation succeeds; the
+# commonAnnotations transformer then overrides the base literal with the
+# real platform-injected value at sync time.
 #
 # ⚠️ implemented, E2E PENDING platform bootstrap — confirm at first sync that
 # the injected region reaches HELLO_TAG + the latency annotations.
 #
-# Registry injection (ADR-10) — SAME channel as the region annotation.
-# The platform ApplicationSet injects
-# `aegis.binhsu.org/ecr-repository: <acct>.dkr.ecr.<region>.amazonaws.com/aegis-greeter`
-# (full repo URL, NO tag/digest) via kustomize.commonAnnotations. The
-# replacement below rewrites ONLY the part of the container image before
-# the `@` (options: delimiter "@", index 0), so the digest pinned in
-# `images:` above survives injection.
+# Registry — NO LONGER an injected annotation (2026-07-21 GHCR migration,
+# aegis-platform-aws ADR-24). `images.newName` above is the full static
+# GHCR ref, committed directly, mirroring aegis-core's ADR-23 GHCR move. The
+# base Deployment's `aegis.binhsu.org/ecr-repository` literal annotation
+# (k8s/base/deployment.yaml) is now vestigial — nothing here reads it.
 
 replacements:
   - source:
@@ -82,16 +90,3 @@ replacements:
         fieldPaths:
           - metadata.annotations.[external-dns.alpha.kubernetes.io/set-identifier]
           - metadata.annotations.[external-dns.alpha.kubernetes.io/aws-region]
-  - source:
-      kind: Deployment
-      name: aegis-greeter
-      fieldPath: metadata.annotations.[aegis.binhsu.org/ecr-repository]
-    targets:
-      - select:
-          kind: Deployment
-          name: aegis-greeter
-        fieldPaths:
-          - spec.template.spec.containers.[name=greeter].image
-        options:
-          delimiter: "@"
-          index: 0

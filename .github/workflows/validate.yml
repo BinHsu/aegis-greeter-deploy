@@ -4,16 +4,22 @@ name: Validate
 # contract:
 #
 #   1. Digest-presence guard — every rendered Deployment image must be
-#      pinned `@sha256:<64 hex>`. This is the regression test for the
-#      kustomize.images wipe bug: the platform's old newName-only
-#      `spec.source.kustomize.images` injection deleted the overlay's
-#      digest field and rendered `:latest` (proven on kustomize v5.8.1).
-#   2. Injection simulation — replays what the platform ApplicationSet
-#      does at sync time (inject `aegis.binhsu.org/region` and
-#      `aegis.binhsu.org/ecr-repository` via `kustomize edit add annotation`
-#      WITHOUT --force — exactly as ArgoCD does), then builds and asserts
-#      the rendered image is `<repo URL>@<THE SAME digest the standalone
-#      render pinned>`, and that the injected region reached HELLO_TAG.
+#      pinned `ghcr.io/binhsu/aegis-greeter@sha256:<64 hex>`. This is the
+#      regression test for the kustomize.images wipe bug: the platform's old
+#      newName-only `spec.source.kustomize.images` injection deleted the
+#      overlay's digest field and rendered `:latest` (proven on kustomize
+#      v5.8.1). The registry is now a static ref committed in each overlay's
+#      `images.newName` (2026-07-21 GHCR migration, aegis-platform-aws
+#      ADR-24) — this step also guards that nothing reintroduces a bare/ECR
+#      name.
+#   2. Injection simulation — replays what the platform ApplicationSet does
+#      at sync time (inject `aegis.binhsu.org/region` via `kustomize edit add
+#      annotation` WITHOUT --force — exactly as ArgoCD does), asserts the
+#      injected region reached HELLO_TAG, AND asserts the rendered image is
+#      UNCHANGED (still the static GHCR ref@digest) even when the now-inert
+#      `aegis.binhsu.org/ecr-repository` annotation is also injected — this
+#      is the regression guard for the ADR-24 decoupling: nothing in this
+#      overlay may consume that annotation again.
 #
 #      Using the real kustomize edit mechanism (not sed) means CI catches
 #      exactly the conflict class that broke ArgoCD on 2026-06-12: if the
@@ -67,10 +73,11 @@ jobs:
             kubectl kustomize "k8s/overlays/${overlay}" > "rendered-${overlay}.yaml"
             image_lines="$(grep -E '^\s+image: ' "rendered-${overlay}.yaml")"
             echo "${image_lines}"
-            # EVERY image line must be digest-pinned — a single stray
-            # unpinned image (e.g. a future sidecar) must fail, so we
-            # assert no line violates instead of "at least one matches".
-            bad="$(echo "${image_lines}" | grep -Ev 'image: aegis-greeter@sha256:[0-9a-f]{64}$' || true)"
+            # EVERY image line must be digest-pinned to the static GHCR ref —
+            # a single stray unpinned image (e.g. a future sidecar) must
+            # fail, so we assert no line violates instead of "at least one
+            # matches".
+            bad="$(echo "${image_lines}" | grep -Ev 'image: ghcr\.io/binhsu/aegis-greeter@sha256:[0-9a-f]{64}$' || true)"
             [ -z "${bad}" ] \
               || { echo "::error::${overlay}: non-digest-pinned image line(s) (kustomize.images wipe regression?):"; echo "${bad}"; exit 1; }
             # Record the pinned digest; the injection step asserts the
@@ -78,7 +85,7 @@ jobs:
             echo "${image_lines}" | head -1 | sed -E 's/.*@(sha256:[0-9a-f]{64})$/\1/' > "digest-${overlay}.txt"
           done
 
-      - name: Simulate platform annotation injection + assert digest survives
+      - name: Simulate platform annotation injection + assert image unaffected
         run: |
           set -euo pipefail
           # Replay the ArgoCD-side injection using the REAL kustomize mechanism:
@@ -88,8 +95,19 @@ jobs:
           # fail with "annotation already in kustomization file. Use --force to
           # override." — the same error ArgoCD surfaces — catching the conflict
           # class before it reaches the cluster.
+          #
+          # The ecr-repository annotation is injected here TOO, even though
+          # staging/prod no longer consume it (ADR-24) — an unmigrated
+          # platform ApplicationSet may still write it as harmless dead data.
+          # Injecting it and asserting the image DOESN'T change is the
+          # regression guard: it fails loud if a `replacements` rule
+          # consuming this annotation is ever reintroduced into these
+          # overlays without also removing the static `images.newName`,
+          # which would silently reproduce the ADR-12 registry-vs-digest
+          # collision this repo already fixed once (2026-06-12).
           REGION="eu-central-1"
-          ECR_REPO="162975888022.dkr.ecr.${REGION}.amazonaws.com/aegis-greeter"
+          STALE_ECR_REPO="162975888022.dkr.ecr.${REGION}.amazonaws.com/aegis-greeter"
+          GHCR_IMAGE="ghcr.io/binhsu/aegis-greeter"
           for overlay in staging prod; do
             echo "=== k8s/overlays/${overlay} (injected) ==="
             digest="$(cat "digest-${overlay}.txt")"
@@ -101,17 +119,17 @@ jobs:
             (
               cd "/tmp/inject-sim/overlays/${overlay}"
               kustomize edit add annotation \
-                "aegis.binhsu.org/ecr-repository:${ECR_REPO}" \
+                "aegis.binhsu.org/ecr-repository:${STALE_ECR_REPO}" \
                 "aegis.binhsu.org/region:${REGION}"
             )
             kustomize build "/tmp/inject-sim/overlays/${overlay}" > "rendered-${overlay}-injected.yaml"
             image_lines="$(grep -E '^\s+image: ' "rendered-${overlay}-injected.yaml")"
             echo "${image_lines}"
-            # Registry URL must land in front of THE SAME digest the
-            # standalone render pinned, on every image line.
-            bad="$(echo "${image_lines}" | grep -Fv "image: ${ECR_REPO}@${digest}" || true)"
+            # The image must stay the static GHCR ref@digest — injecting the
+            # (now-inert) ecr-repository annotation must NOT change it.
+            bad="$(echo "${image_lines}" | grep -Fv "image: ${GHCR_IMAGE}@${digest}" || true)"
             [ -z "${bad}" ] \
-              || { echo "::error::${overlay}: injected render diverged from ${ECR_REPO}@${digest}:"; echo "${bad}"; exit 1; }
+              || { echo "::error::${overlay}: injected render diverged from ${GHCR_IMAGE}@${digest} — the ecr-repository annotation is being consumed again (ADR-24 regression):"; echo "${bad}"; exit 1; }
             # The region chain must still render — scoped to the HELLO_TAG
             # env var, not any stray `value:` field in the manifest.
             grep -A1 'name: HELLO_TAG' "rendered-${overlay}-injected.yaml" \
