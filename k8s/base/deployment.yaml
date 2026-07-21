@@ -4,17 +4,27 @@ metadata:
   name: aegis-greeter
   namespace: aegis-greeter
   annotations:
-    # Standalone-build defaults for the platform-injected annotations.
-    # These live on the BASE resource (not overlay commonAnnotations) because
+    # Standalone-build default for the platform-injected region annotation.
+    # It lives on the BASE resource (not overlay commonAnnotations) because
     # ArgoCD's injection mechanism runs `kustomize edit add annotation <k:v>`
     # WITHOUT --force, which refuses keys that are already present in the
     # kustomization file (caught live 2026-06-12: "annotation already in
-    # kustomization file. Use --force to override."). By placing the defaults
-    # here as literal resource annotations instead, the overlay kustomization
-    # files declare NO value for these keys — so ArgoCD's edit-add-annotation
-    # succeeds, and the commonAnnotations transformer then overrides these
-    # literals at sync time with the real values injected by the platform
+    # kustomization file. Use --force to override."). By placing the default
+    # here as a literal resource annotation instead, the overlay kustomization
+    # files declare NO value for this key — so ArgoCD's edit-add-annotation
+    # succeeds, and the commonAnnotations transformer then overrides the
+    # literal at sync time with the real value injected by the platform
     # ApplicationSet.
+    #
+    # aegis.binhsu.org/ecr-repository: VESTIGIAL for staging/prod as of the
+    # 2026-07-21 GHCR migration (aegis-platform-aws ADR-24) — those overlays
+    # now carry the full static `ghcr.io/binhsu/aegis-greeter` ref directly
+    # in `images.newName` and no longer consume this annotation at all. It is
+    # kept here, unchanged, ONLY because the Talos/on-prem overlay
+    # (k8s/overlays/talos) still uses this SAME channel for its own,
+    # unrelated local-registry value (never AWS ECR) — removing the key
+    # would change that overlay's standalone-build fallback. Do not read
+    # this value as the real AWS/GHCR registry for staging/prod.
     aegis.binhsu.org/ecr-repository: aegis-greeter
     aegis.binhsu.org/region: local
   labels:

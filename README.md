@@ -15,7 +15,7 @@ the artifact.
 
 ```text
 aegis-greeter build CI
-  │  build + push image ONCE, capture sha256 digest
+  │  build + push image ONCE to GHCR, capture sha256 digest
   ▼
 overlays/staging   ← CI bumps the digest here
   │                  (kustomize edit set image aegis-greeter@sha256:<digest>)
@@ -28,18 +28,19 @@ promotion PR       ← copies the SAME digest into overlays/prod (no rebuild)
 ```
 
 - **Pinned by digest, not tag.** Each overlay's `images[]` entry carries the
-  bare image name and a `digest:` field. A git-sha tag is mutable by
-  convention and lets a rebuild diverge between envs; the digest is the image's
-  content hash, so staging and prod provably run the identical artifact.
-- **Registry injected at sync, not committed.** The registry URL is absent on
-  purpose — it embeds an AWS account ID. The platform ApplicationSet injects
-  it as the `aegis.binhsu.org/ecr-repository` annotation (same channel as the
-  `aegis.binhsu.org/region` annotation); a kustomize `replacements` rule in
-  each overlay splices it into the image's repo part while preserving the
-  digest. The earlier `kustomize.images` newName injection is gone — it
-  provably wiped the overlay's digest field and rendered `:latest`. One shared
-  registry lives in a dedicated `aegis-deployment` account; this repo carries
-  only name + digest.
+  bare image name, a `newName:`, and a `digest:` field. A git-sha tag is
+  mutable by convention and lets a rebuild diverge between envs; the digest is
+  the image's content hash, so staging and prod provably run the identical
+  artifact.
+- **Registry — public GHCR, committed directly (2026-07-21).** Each overlay's
+  `images.newName` is the static ref `ghcr.io/binhsu/aegis-greeter`. Unlike the
+  old AWS ECR path, GHCR has no account id and no region to hide, so there is
+  nothing for the platform to inject — no `aegis.binhsu.org/ecr-repository`
+  annotation, no `replacements` splice. This mirrors aegis-core's earlier move
+  to GHCR (`aegis-platform-aws` ADR-23); see ADR-24 for greeter's version of
+  that decision. The earlier `kustomize.images` newName-only injection is a
+  separate, older, already-fixed bug (it provably wiped the overlay's digest
+  field and rendered `:latest`) — unrelated to this registry change.
 - **Promotion is a digest copy.** Promoting staging → prod copies the verified
   `sha256:` digest into `overlays/prod`; ArgoCD reconciles the git change. No
   artifact is rebuilt at promotion time.
@@ -50,8 +51,18 @@ promotion PR       ← copies the SAME digest into overlays/prod (no rebuild)
   > reflow.
 
 See the platform repo for the full rationale: `aegis-platform-aws` README
-"Release model" section and ADR-10 ("Release model: build once, promote by
-digest, single shared registry in a dedicated Deployment account").
+"Release model" section, ADR-10 ("build once, promote by digest"), and ADR-24
+("greeter image distribution: public GHCR").
+
+> ⚠️ **Post-migration follow-up.** The digests currently committed in both
+> overlays were promoted from the OLD ECR-hosted image and do not exist in
+> GHCR. Staging self-heals on the next push to aegis-greeter's `main` (its
+> publish workflow now targets GHCR and will overwrite the digest here as
+> always). Prod requires a fresh, manual promotion PR copying that new GHCR
+> digest in — do not treat prod as pullable until that promotion lands. Also
+> confirm the `ghcr.io/binhsu/aegis-greeter` package visibility: if it is
+> private (GHCR's default), pulling nodes need a GHCR `imagePullSecret`,
+> which nothing in this repo currently wires up.
 
 ## Layout
 
