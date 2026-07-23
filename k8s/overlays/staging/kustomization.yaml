@@ -36,7 +36,7 @@ resources:
 # (or a manual `kustomize edit set image` here with a real GHCR digest)
 # before relying on this overlay.
 images:
-- digest: sha256:3168f677eb17c9662a5b0163833080a810afd32357786eee92731b71262684d1
+- digest: sha256:a88c668d51fd60f0c297ba13cf43e199c1d9a35237884176526a5e5401de5350
   name: aegis-greeter
   newName: ghcr.io/binhsu/aegis-greeter
 # Env-diff lives in the overlay, NOT in the artifact (ADR-10). Staging runs
