@@ -23,25 +23,18 @@ resources:
 # time. This ALSO ends ADR-12's registry-injection channel for greeter (the
 # `aegis.binhsu.org/ecr-repository` annotation/replacement is removed below).
 #
-# ⚠️ FOLLOW-UP (ordering — HIGH PRIORITY, this is prod): the digest below was
-# promoted from the OLD ECR-hosted image and does NOT exist in GHCR — no
-# bytes were ever pushed there under it. Unlike staging, nothing auto-heals
-# this: prod promotion is a manual, gated PR (see staging's overlay + the
-# repo README). DO NOT rely on this overlay resolving until a fresh
-# promotion PR copies a REAL GHCR digest from staging (produced by the next
-# push to aegis-greeter's main, which now publishes to GHCR) into this
-# `digest:` field. Until that promotion lands, a real sync here would
-# ImagePullBackOff — acceptable only because prod has never been synced by a
-# live cluster yet (E2E PENDING platform bootstrap, per
-# argocd/application.yaml). Treat "run a fresh promotion" as a blocking
-# pre-condition before this cluster is ever stood up for real.
+# Pinned by digest (ADR-10 "build once, promote by digest"). Promoted to a real
+# GHCR digest on 2026-07-23 (hygiene promotion — replaces the retired ECR-era
+# digest that never existed in GHCR). This is CONFIG-ONLY: no live cluster has
+# been stood up and nothing has been deployed (E2E PENDING platform bootstrap,
+# per argocd/application.yaml). When prod is eventually stood up for real, run a
+# fresh staging-verified promotion first per the normal gated flow.
 images:
   - name: aegis-greeter
     newName: ghcr.io/binhsu/aegis-greeter
-    # Placeholder digest — see the FOLLOW-UP note above. The promotion PR
-    # copies the verified staging digest here verbatim:
-    #   kustomize edit set image aegis-greeter@sha256:<digest>
-    digest: "sha256:0e6f3e6b113bf12f9c4536caa9ccf8aa59351c066408eb1a750a7a97b73d2d28"
+    # Promoted from staging's verified GHCR digest. Kept in sync via:
+    #   kustomize edit set image aegis-greeter=ghcr.io/binhsu/aegis-greeter@sha256:<digest>
+    digest: "sha256:a88c668d51fd60f0c297ba13cf43e199c1d9a35237884176526a5e5401de5350"
 # Prod replica floor matches the base (2). HPA scales 2→10 on CPU.
 # Staging overrides this to 1 (see ../staging) — same artifact, different
 # config, which is the whole point of keeping env-diff in the overlay.
