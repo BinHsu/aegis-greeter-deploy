@@ -1,5 +1,13 @@
 # aegis-greeter-deploy
 
+## Maintenance status
+
+Actively maintained until 2026-07-31. Paused after that date while the owner
+starts a new job; expected to resume around 2026-Q1/Q2. Security updates keep
+flowing during the pause — only version-update PRs are paused. Issues and PRs
+may not get a timely response in the meantime. The repo is left in a
+known-good state at the freeze point, not mid-refactor.
+
 Kubernetes manifests for the `aegis-greeter` workload — a kustomize base plus
 per-environment overlays. ArgoCD (run by the platform) reconciles the overlays
 into the matching clusters. This repo is config only; the application image is
