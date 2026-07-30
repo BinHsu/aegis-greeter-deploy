@@ -2,12 +2,12 @@
 
 ## Maintenance status
 
-Actively maintained until 2026-07-31. Paused after that date while the owner
-starts a new job; expected to resume around 2027-Q1/Q2. Security updates still
-flow: Dependabot security updates are enabled on this repo (verified
-2026-07-31) — this repo has no `.github/dependabot.yml`, so there is no
-version-update PR cadence to pause here in the first place. Issues and PRs
-may not get a timely response in the meantime. The repo is left in a
+Actively maintained through 2026-07-31. Paused from the merge of this change
+while the owner starts a new job; expected to resume around 2027-Q1/Q2.
+Security updates still flow: Dependabot security updates are enabled on this
+repo (verified 2026-07-31) — this repo has no `.github/dependabot.yml`, so
+there is no version-update PR cadence to pause here in the first place. Issues
+and PRs may not get a timely response in the meantime. The repo is left in a
 known-good state at the freeze point, not mid-refactor.
 
 Kubernetes manifests for the `aegis-greeter` workload — a kustomize base plus
